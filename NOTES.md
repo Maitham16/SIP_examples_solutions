@@ -258,3 +258,19 @@ bpf = lpf * hpf
 bsf = 1 - bpf
 h_bsf = np.fft.ifft(bsf).real
 t = np.arange(N) / fs
+
+DWT:
+coeffs = pywt.wavedec(x, wavelet='db2', level=3)
+cA3, cD3, cD2, cD1 = coeffs  # Order: [approx, detail3, detail2, detail1]
+reconstruct_signal = pywt.waverec(coeffs, wavelet='db2')
+reconstruct_signal = reconstruct_signal[:len(x)]
+
+gaus_noise = np.random.normal(0, 0.5, len(x_test))
+noisy_signal = x_test + gaus_noise
+coeffs_noisy = pywt.wavedec(noisy_signal, wavelet='db4', level=4)
+threshold = 0.1
+coeffs_noisy_thresholded = [pywt.threshold(c, threshold, mode='soft') for c in coeffs_noisy]
+denoised_signal = pywt.waverec(coeffs_noisy_thresholded, wavelet='db4')
+
+total_coeffs = sum(len(c) for c in coeffs_noisy_thresholded)
+zero_coeffs = sum(np.sum(c == 0) for c in coeffs_noisy_thresholded)
