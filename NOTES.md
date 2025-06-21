@@ -274,3 +274,75 @@ denoised_signal = pywt.waverec(coeffs_noisy_thresholded, wavelet='db4')
 
 total_coeffs = sum(len(c) for c in coeffs_noisy_thresholded)
 zero_coeffs = sum(np.sum(c == 0) for c in coeffs_noisy_thresholded)
+
+DCT:
+t = np.arange(N) / fs
+n = np.arange(N)
+x_dct = dct(x, type=2, norm='ortho')
+coeff_idx = np.arange(len(x_dct))
+x_reconstructed = idct(x_dct, type=2, norm='ortho')
+img_dct = dct(dct(img, axis=0, type=2, norm='ortho'), axis=1, type=2, norm='ortho')
+
+square low-pass window (top-left corner only):
+window_size = 64
+window = np.zeros_like(img_dct)
+window[:window_size, :window_size] = 1
+img_dct_windowed = img_dct * window
+img_reconstructed = idct(idct(img_dct_windowed, axis=0, type=2, norm='ortho'), axis=1, type=2, norm='ortho')
+
+jpg window style:
+rows, cols = img.shape
+compressed_img = np.zeros_like(img)
+for i in range(0, rows, block_size):
+    for j in range(0, cols, block_size):
+        block = img[i:i+block_size, j:j+block_size]
+        block_dct = dct(dct(block.T, norm='ortho').T, norm='ortho')
+        mask = np.zeros_like(block_dct)
+        mask[:keep_size, :keep_size] = 1
+        block_dct *= mask
+        block_idct = idct(idct(block_dct.T, norm='ortho').T, norm='ortho')
+        compressed_img[i:i+block_size, j:j+block_size] = block_idct
+
+periodogram and windowing:
+X = np.fft.fft(x)
+psd_periodogram = (1/N) * np.abs(X)**2
+f = np.fft.fftfreq(N, d=1/fs)
+plt.plot(f[:N//2], psd_periodogram[:N//2])
+
+window = np.hanning(N)
+windowed_x = x * window
+X_windowed = np.fft.fft(windowed_x)
+psd_windowed = (1/N) * np.abs(X_windowed)**2
+f = np.fft.fftfreq(N, d=1/fs)
+plt.plot(f[:N//2], psd_periodogram[:N//2], label='Original Periodogram')
+plt.plot(f[:N//2], psd_windowed[:N//2], label='Windowed Periodogram')
+
+segments = np.split(x, 5)
+psd_segments = []
+for segment in segments:
+    X_seg = np.fft.fft(segment, n=N)
+    psd_seg = (1/N) * np.abs(X_seg)**2
+    psd_segments.append(psd_seg)
+psd_bartlett = np.mean(psd_segments, axis=0)
+f = np.fft.fftfreq(N, d=1/fs)
+plt.plot(f[:N//2], psd_periodogram[:N//2], label="Original Periodogram")
+plt.plot(f[:N//2], psd_bartlett[:N//2], label="Bartlett Estimate")
+
+f_scipy, psd_welch_scipy = signal.welch(x, fs=fs, window='hann', nperseg=256, noverlap=128, nfft=N, return_onesided=False)
+
+Multitapers:
+from scipy.signal.windows import dpss
+tapers = dpss(N, NW, Kmax=K, return_ratios=False)
+for i in range(K):
+    plt.plot(tapers[i], label=f'Taper {i+1}')
+
+psd_multitaper = []
+for taper in tapers:
+    tapered_x = x * taper
+    X_tapered = np.fft.fft(tapered_x, n=N)
+    psd = (1/N) * np.abs(X_tapered)**2
+    psd_multitaper.append(psd)
+psd_multitaper = np.mean(psd_multitaper, axis=0)
+plt.plot(f[:N//2], psd_multitaper[:N//2], label='Multitaper Estimate')
+plt.plot(f[:N//2], psd_welch[:N//2], label='Welch Estimate')
+plt.plot(f[:N//2], psd_bartlett[:N//2], label='Bartlett Estimate')
